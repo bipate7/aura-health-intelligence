@@ -1,8 +1,9 @@
+
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { StorageService } from '../services/storageService';
 import { User } from '../types';
-import { ArrowRight, Lock, Mail, User as UserIcon, Activity, Sparkles } from 'lucide-react';
+import { ArrowRight, Lock, Mail, User as UserIcon, Activity, Sparkles, Zap } from 'lucide-react';
 
 interface AuthProps {
     onLogin: (user: User) => void;
@@ -44,6 +45,17 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         }
     };
 
+    const handleDemoLogin = async () => {
+        setLoading(true);
+        await new Promise(r => setTimeout(r, 800));
+        const demoEmail = 'demo@aura.ai';
+        let user = StorageService.loginUser(demoEmail);
+        if (!user) {
+            user = StorageService.createUser('Aura Explorer', demoEmail);
+        }
+        onLogin(user);
+    };
+
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col md:flex-row">
             {/* Left Side - Brand / Visuals */}
@@ -62,7 +74,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     
                     <div className="space-y-6 max-w-md">
                         <h1 className="text-4xl md:text-5xl font-light leading-tight">
-                            Intelligence for your <span className="font-semibold text-indigo-400">wellbeing</span>.
+                            Intelligence for your <span className="font-semibold text-indigo-400 font-sans tracking-tight">wellbeing</span>.
                         </h1>
                         <p className="text-slate-400 text-lg">
                             Track sleep, energy, and nutrition to uncover hidden patterns in your health. Privacy-first, medical-grade insights.
@@ -80,9 +92,11 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             <div className="w-full md:w-1/2 flex items-center justify-center p-8 md:p-12 dark:bg-slate-900">
                 <div className="w-full max-w-md space-y-8">
                     <div className="text-center md:text-left">
-                        <h2 className="text-3xl font-bold text-slate-900 dark:text-white">{isLogin ? 'Welcome back' : 'Create account'}</h2>
-                        <p className="text-slate-500 dark:text-slate-400 mt-2">
-                            {isLogin ? 'Enter your details to access your dashboard.' : 'Start your health journey today.'}
+                        <h2 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tighter tracking-tighter">
+                            {isLogin ? 'Neural Access' : 'Initialize Core'}
+                        </h2>
+                        <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium">
+                            {isLogin ? 'Synchronize your biometric signature.' : 'Begin your clinical-grade health journey.'}
                         </p>
                     </div>
 
@@ -102,7 +116,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                                             placeholder="Full Name"
                                             value={name}
                                             onChange={e => setName(e.target.value)}
-                                            className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-3.5 pl-12 pr-4 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-900 dark:text-white"
+                                            className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-3.5 pl-12 pr-4 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-900 dark:text-white font-bold"
                                         />
                                     </div>
                                 </motion.div>
@@ -116,7 +130,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                                 placeholder="Email Address"
                                 value={email}
                                 onChange={e => setEmail(e.target.value)}
-                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-3.5 pl-12 pr-4 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-900 dark:text-white"
+                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-3.5 pl-12 pr-4 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-900 dark:text-white font-bold"
                                 required
                             />
                         </div>
@@ -128,36 +142,48 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                                 placeholder="Password"
                                 value={password}
                                 onChange={e => setPassword(e.target.value)}
-                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-3.5 pl-12 pr-4 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-900 dark:text-white"
+                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-3.5 pl-12 pr-4 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-900 dark:text-white font-bold"
                                 required
                             />
                         </div>
 
                         {error && (
-                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-rose-500 text-sm font-medium">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-rose-500 text-sm font-black uppercase tracking-tight">
                                 {error}
                             </motion.div>
                         )}
 
-                        <button 
-                            type="submit"
-                            disabled={loading}
-                            className="w-full bg-slate-900 dark:bg-indigo-600 text-white py-4 rounded-xl font-medium text-lg hover:bg-slate-800 dark:hover:bg-indigo-500 transition-all flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed"
-                        >
-                            {loading ? (
-                                <span className="animate-pulse">Processing...</span>
-                            ) : (
-                                <>
-                                    {isLogin ? 'Sign In' : 'Create Account'} <ArrowRight size={20} />
-                                </>
-                            )}
-                        </button>
+                        <div className="space-y-4 pt-2">
+                            <button 
+                                type="submit"
+                                disabled={loading}
+                                className="w-full bg-slate-900 dark:bg-indigo-600 text-white py-5 rounded-2xl font-black text-lg hover:shadow-2xl hover:shadow-indigo-500/20 transition-all flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed"
+                            >
+                                {loading ? (
+                                    <span className="animate-pulse">SYNCHRONIZING...</span>
+                                ) : (
+                                    <>
+                                        {isLogin ? 'SIGN IN' : 'INITIALIZE'} <ArrowRight size={20} />
+                                    </>
+                                )}
+                            </button>
+
+                            <button 
+                                type="button"
+                                onClick={handleDemoLogin}
+                                disabled={loading}
+                                className="w-full bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 py-5 rounded-2xl font-black text-lg border-2 border-indigo-100 dark:border-indigo-800/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+                            >
+                                <Zap size={20} className="fill-current" />
+                                TRY DEMO DASHBOARD
+                            </button>
+                        </div>
                     </form>
 
                     <div className="text-center">
                         <button 
                             onClick={() => setIsLogin(!isLogin)}
-                            className="text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 font-medium transition-colors"
+                            className="text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 font-black text-xs uppercase tracking-widest transition-colors"
                         >
                             {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
                         </button>

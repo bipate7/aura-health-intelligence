@@ -1,0 +1,7 @@
+{
+  "name": "Aura Health Intelligence",
+  "description": "A medical-grade, privacy-first health intelligence dashboard tracking sleep, energy, and stress patterns. Features AI-driven correlation detection and a calm, premium UI.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

@@ -9,13 +9,34 @@ import { HealthLog, Insight, AIMemoryNode, ReadinessScore } from '../types';
  * Orchestrates the flow between deterministic truth and AI synthesis.
  */
 export const NeuralOrchestrator = {
-  async generateDailyIntelligence(logs: HealthLog[], memories: AIMemoryNode[]): Promise<{
+  async generateDailyIntelligence(userId: string, logs: HealthLog[], memories: AIMemoryNode[]): Promise<{
     insight: Insight;
     readiness: ReadinessScore;
     latency: number;
     confidence: number;
   }> {
     const startTime = performance.now();
+    
+    // Handle New User / Empty State
+    if (!logs || logs.length === 0) {
+        return {
+            insight: {
+                id: crypto.randomUUID(),
+                userId: userId,
+                title: "System Initialized",
+                description: "Aura is online and waiting for your first biometric signal. Complete a Check-in to establish your baseline.",
+                type: 'neutral',
+                dateGenerated: new Date().toISOString(),
+                confidenceScore: 100,
+                reasoning: ["System active.", "No biological data found."],
+                clinicalDisclaimer: "Non-diagnostic."
+            },
+            readiness: { score: 50, state: 'Maintain', reason: 'Awaiting baseline data.' },
+            latency: 0,
+            confidence: 100
+        };
+    }
+
     const latestLog = logs[logs.length - 1];
 
     // 1. Safety Guard Check (Pre-Inference)

@@ -1,13 +1,13 @@
 
-import React, { useEffect, useState } from 'react';
-import { HealthLog, User, ReadinessScore, Insight } from '../types';
+import React, { useEffect, useState, useMemo } from 'react';
+import { User, ReadinessScore, Insight } from '../types';
 import { StorageService } from '../services/storageService';
 import { NeuralOrchestrator } from '../core/neural-orchestrator';
 import { GeminiService } from '../services/geminiService';
 import { NeuralStatus } from './NeuralStatus';
 import { Moon, Zap, Sparkles, Clock, TrendingUp, Activity, Brain, Target, ArrowUpRight, ChevronRight, Sun, Coffee, Sunset } from 'lucide-react';
-import { motion, Variants, AnimatePresence } from 'framer-motion';
-import { RecoveryRingSkeleton, ChartSkeleton, SkeletonPulse } from './Skeleton';
+import { motion, Variants, animate, useMotionValue, useTransform } from 'framer-motion';
+import { RecoveryRingSkeleton, ChartSkeleton } from './Skeleton';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface DashboardProps {
@@ -15,13 +15,14 @@ interface DashboardProps {
   user: User;
 }
 
+// Animation Variants
 const scrollFadeVariants: Variants = {
-  hidden: { opacity: 0, y: 40, filter: 'blur(10px)' },
+  hidden: { opacity: 0, y: 30, filter: 'blur(5px)' },
   visible: { 
     opacity: 1, 
     y: 0, 
     filter: 'blur(0px)',
-    transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] } 
+    transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } 
   }
 };
 
@@ -29,20 +30,7 @@ const sequenceContainerVariants: Variants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: {
-      staggerChildren: 0.3,
-      delayChildren: 0.1
-    }
-  }
-};
-
-const quickCardGridVariants: Variants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1
-    }
+    transition: { staggerChildren: 0.15, delayChildren: 0.1 }
   }
 };
 
@@ -52,8 +40,24 @@ const quickCardVariants: Variants = {
     opacity: 1, 
     y: 0, 
     scale: 1,
-    transition: { type: "spring", stiffness: 100, damping: 15 }
+    transition: { type: "spring", stiffness: 120, damping: 12 }
   }
+};
+
+// CountUp Component
+const CountUp = ({ value, duration = 2 }: { value: number; duration?: number }) => {
+    const motionValue = useMotionValue(0);
+    const roundedValue = useTransform(motionValue, (latest) => Math.round(latest));
+  
+    useEffect(() => {
+      const controls = animate(motionValue, value, {
+        duration,
+        ease: [0.16, 1, 0.3, 1], // Ease Out Expo
+      });
+      return controls.stop;
+    }, [value, duration, motionValue]);
+  
+    return <motion.span>{roundedValue}</motion.span>;
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user }) => {
@@ -64,26 +68,55 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user }) => {
   const [loading, setLoading] = useState(true);
   const [calibrationMode, setCalibrationMode] = useState(true);
 
+  // Optimization: Memoize data fetching logic to prevent calculations on every render
   useEffect(() => {
+    let mounted = true;
+
     const loadIntelligence = async () => {
         setLoading(true);
-        const logs = StorageService.getLogs(user.id).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        const memories = StorageService.getMemory(user.id);
-        
-        setCalibrationMode(logs.length < 7);
-        
-        // Execute Neural Core Orchestration
-        const intelligence = await NeuralOrchestrator.generateDailyIntelligence(logs, memories);
-        const detectedChronotype = await GeminiService.detectChronotype(logs);
-        
-        setInsight(intelligence.insight);
-        setReadiness(intelligence.readiness);
-        setSystemMetrics({ latency: intelligence.latency, confidence: intelligence.confidence });
-        setChronotype(detectedChronotype);
-        setLoading(false);
+        try {
+            // Fetch raw data
+            const logs = StorageService.getLogs(user.id);
+            const memories = StorageService.getMemory(user.id);
+            
+            // Heavy sorting done here
+            const sortedLogs = logs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            
+            if (mounted) setCalibrationMode(sortedLogs.length < 7);
+            
+            // Execute Neural Core Orchestration
+            // The orchestrator does the heavy lifting
+            const intelligence = await NeuralOrchestrator.generateDailyIntelligence(user.id, sortedLogs, memories);
+            
+            // Only detect chronotype if we have enough data (lazy load behavior)
+            let detectedChronotype: any = 'Unknown';
+            if (sortedLogs.length > 3) {
+                detectedChronotype = await GeminiService.detectChronotype(sortedLogs);
+            }
+            
+            if (mounted) {
+                setInsight(intelligence.insight);
+                setReadiness(intelligence.readiness);
+                setSystemMetrics({ latency: intelligence.latency, confidence: intelligence.confidence });
+                setChronotype(detectedChronotype);
+            }
+        } catch (error) {
+            console.error("Dashboard Intelligence Load Failed:", error);
+            if (mounted) {
+                setReadiness({ score: 50, state: 'Maintain', reason: "Offline Mode: Unable to sync neural core." });
+                setSystemMetrics({ latency: 0, confidence: 0 });
+            }
+        } finally {
+            if (mounted) setLoading(false);
+        }
     };
+
     loadIntelligence();
+    return () => { mounted = false; };
   }, [user.id]);
+
+  // Optimization: Memoize chart data to prevent re-renders of the heavy Chart component
+  const chronotypeData = useMemo(() => getChronotypeData(chronotype), [chronotype]);
 
   if (loading) return (
     <div className="space-y-8 pb-20">
@@ -111,11 +144,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user }) => {
         variants={scrollFadeVariants}
         className="flex flex-col lg:flex-row gap-8 items-start"
       >
-        <div className="w-full lg:w-1/3 bg-white dark:bg-slate-800 p-8 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-xl relative overflow-hidden group">
+        <motion.div 
+            whileHover={{ y: -5, boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.15)" }}
+            className="w-full lg:w-1/3 bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 shadow-xl relative overflow-hidden group transition-all duration-300"
+        >
             {calibrationMode && (
                 <div className="absolute top-0 left-0 w-full h-1 bg-amber-500 animate-pulse z-20" />
             )}
-            <div className="absolute -right-4 -top-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity duration-700"><Activity size={200} /></div>
+            <div className="absolute -right-4 -top-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity duration-700 group-hover:scale-110 group-hover:rotate-12"><Activity size={240} /></div>
             <div className="relative z-10 space-y-4 text-center lg:text-left">
                 <div className="flex justify-between items-center">
                     <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">Daily Readiness</h3>
@@ -126,19 +162,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user }) => {
                     )}
                 </div>
                 <div className="flex items-baseline justify-center lg:justify-start gap-2">
-                    <motion.span 
-                        initial={{ scale: 0.9, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        className="text-7xl font-black text-slate-800 dark:text-white tracking-tighter"
-                    >
-                        {readiness?.score}%
-                    </motion.span>
+                    <span className="text-8xl font-black text-slate-800 dark:text-white tracking-tighter">
+                        <CountUp value={readiness?.score || 0} />
+                    </span>
+                    <span className="text-3xl font-bold text-slate-400 dark:text-slate-600">%</span>
                 </div>
-                <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
+                <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-medium border-l-2 border-slate-200 dark:border-slate-700 pl-4">
                     {readiness?.reason}
                 </p>
             </div>
-        </div>
+        </motion.div>
 
         <div className="flex-1 w-full space-y-8">
             <div className="flex justify-between items-end">
@@ -150,9 +183,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user }) => {
                     whileHover={{ scale: 1.05, y: -2 }} 
                     whileTap={{ scale: 0.98 }}
                     onClick={() => onNavigate('CHECK_IN')}
-                    className="bg-slate-900 dark:bg-indigo-600 text-white px-8 py-4 rounded-[1.25rem] font-black shadow-2xl flex items-center gap-2 text-sm tracking-tight"
+                    className="bg-slate-900 dark:bg-indigo-600 text-white px-8 py-4 rounded-[1.25rem] font-black shadow-2xl flex items-center gap-2 text-sm tracking-tight relative overflow-hidden group"
                 >
-                    Log Signal <Sparkles size={18} />
+                    <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                    <span className="relative z-10 flex items-center gap-2">Log Signal <Sparkles size={18} /></span>
                 </motion.button>
             </div>
 
@@ -162,8 +196,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user }) => {
                     className="bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800/50 p-5 rounded-2xl flex gap-4 transition-all group cursor-pointer" 
                     onClick={() => onNavigate('COACH')}
                 >
-                    <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center shrink-0">
-                        <Brain className="text-indigo-600 dark:text-indigo-400" size={20} />
+                    <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition-colors duration-300">
+                        <Brain className="text-indigo-600 dark:text-indigo-400 group-hover:text-white" size={20} />
                     </div>
                     <div className="text-sm flex-1">
                         <span className="font-black text-indigo-800 dark:text-indigo-200 uppercase text-[10px] tracking-widest block mb-1">Latest Insight</span>
@@ -171,7 +205,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user }) => {
                             {insight?.title || "Evaluating logs..."}
                         </span>
                     </div>
-                    <ChevronRight size={16} className="text-slate-300 mt-1" />
+                    <ChevronRight size={16} className="text-slate-300 mt-1 group-hover:translate-x-1 transition-transform" />
                 </motion.div>
                 <motion.div className="bg-slate-50 dark:bg-slate-900/10 border border-slate-100 dark:border-slate-800/50 p-5 rounded-2xl flex gap-4">
                     <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-900/30 flex items-center justify-center shrink-0">
@@ -197,7 +231,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user }) => {
         {/* Chronotype Alignment Section */}
         <motion.section
           variants={scrollFadeVariants}
-          className="bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 shadow-sm relative overflow-hidden"
+          whileHover={{ y: -2 }}
+          className="bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 shadow-sm relative overflow-hidden transition-all duration-500 hover:shadow-xl"
         >
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
               <div className="space-y-1">
@@ -229,7 +264,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user }) => {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-center">
               <div className="lg:col-span-2 h-64 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={getChronotypeData(chronotype)}>
+                      <AreaChart data={chronotypeData}>
                           <defs>
                               <linearGradient id="colorEnergy" x1="0" y1="0" x2="0" y2="1">
                                   <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
@@ -255,7 +290,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user }) => {
                               strokeWidth={4} 
                               fillOpacity={1} 
                               fill="url(#colorEnergy)" 
-                              animationDuration={2000}
+                              animationDuration={1500}
                           />
                       </AreaChart>
                   </ResponsiveContainer>
@@ -299,7 +334,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user }) => {
 
         {/* Quick Cards Grid - Animates after Chronotype section */}
         <motion.section 
-          variants={quickCardGridVariants}
+          variants={sequenceContainerVariants}
           className="grid grid-cols-2 lg:grid-cols-4 gap-4"
         >
             <QuickCard label="Intelligence" icon={<Sparkles />} onClick={() => onNavigate('COACH')} variants={quickCardVariants} />
@@ -342,10 +377,11 @@ const QuickCard = ({ label, icon, onClick, variants }: any) => (
     <motion.button 
         variants={variants}
         whileHover={{ y: -8, scale: 1.05 }} 
+        whileTap={{ scale: 0.95 }}
         onClick={onClick}
         className="bg-white dark:bg-slate-800 p-8 rounded-[2rem] border border-slate-100 dark:border-slate-700 flex flex-col items-center gap-4 shadow-sm hover:shadow-2xl transition-all duration-300 group"
     >
-        <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl text-indigo-500 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-500">
+        <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl text-indigo-500 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-500 shadow-sm group-hover:shadow-indigo-500/30">
             {React.cloneElement(icon, { size: 24 })}
         </div>
         <div className="space-y-1 text-center">

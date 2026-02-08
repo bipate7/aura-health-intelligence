@@ -3,7 +3,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { HealthLog, User } from '../types';
 import { StorageService } from '../services/storageService';
 import { motion, Variants } from 'framer-motion';
-import { Moon, Battery, Brain, Clock, Zap } from 'lucide-react';
+import { Moon, Battery, Brain, Clock, Zap, Info } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line } from 'recharts';
 import { MetricSkeleton, ChartSkeleton, SkeletonPulse } from './Skeleton';
 
@@ -52,8 +52,42 @@ const AnimatedBar = (props: any) => {
 export const SleepAnalysis: React.FC<Props> = ({ user }) => {
     const [loading, setLoading] = useState(true);
     const [isDarkMode, setIsDarkMode] = useState(false);
-    const logs = useMemo(() => StorageService.getLogs(user.id).sort((a, b) => new Date(a.date).getTime() - new Date(a.date).getTime()), [user.id]);
-    const last14 = logs.slice(-14);
+    
+    // Optimization: Memoize log sorting and slicing. 
+    // If no logs exist, generate cinematic mock data.
+    const { logs: last14, isSimulated } = useMemo(() => {
+        const storedLogs = StorageService.getLogs(user.id);
+        
+        if (storedLogs.length > 0) {
+            const sorted = storedLogs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            return { logs: sorted.slice(-14), isSimulated: false };
+        }
+
+        // Generate Cinematic Mock Data if empty
+        const mockData = Array.from({ length: 7 }).map((_, i) => {
+             const d = new Date();
+             d.setDate(d.getDate() - (6 - i));
+             // Create realistic biological waves
+             const variance = Math.sin(i * 0.8) * 1.5;
+             const qualityBase = 7;
+             
+             return {
+                 id: `mock-${i}`,
+                 userId: user.id,
+                 date: d.toISOString(),
+                 sleepQuality: Math.min(10, Math.max(4, Math.round(qualityBase + variance))),
+                 sleepPhases: {
+                     deep: 65 + (Math.random() * 25) + (variance * 5),
+                     light: 210 + (Math.random() * 40),
+                     rem: 85 + (Math.random() * 20),
+                     awake: 10 + (Math.random() * 15)
+                 },
+                 energy: 7, stress: 3, mood: 7, symptoms: [], notes: 'Simulated Entry'
+             } as HealthLog;
+        });
+
+        return { logs: mockData, isSimulated: true };
+    }, [user.id]);
 
     useEffect(() => {
         const timer = setTimeout(() => setLoading(false), 800); 
@@ -77,30 +111,35 @@ export const SleepAnalysis: React.FC<Props> = ({ user }) => {
         tooltipBorder: isDarkMode ? '#1e293b' : '#f1f5f9'
     };
 
-    const avgQuality = last14.reduce((acc, l) => acc + l.sleepQuality, 0) / (last14.length || 1);
-    const logsWithPhases = last14.filter(l => l.sleepPhases);
-    const hasPhaseData = logsWithPhases.length > 0;
-    
-    const avgDeep = (logsWithPhases.reduce((acc, l) => acc + (l.sleepPhases?.deep || 0), 0) / (logsWithPhases.length || 1)) / 60;
-    const avgREM = (logsWithPhases.reduce((acc, l) => acc + (l.sleepPhases?.rem || 0), 0) / (logsWithPhases.length || 1)) / 60;
-    const avgTotal = (logsWithPhases.reduce((acc, l) => {
-        const p = l.sleepPhases;
-        return acc + (p ? p.deep + p.light + p.rem : 0);
-    }, 0) / (logsWithPhases.length || 1)) / 60;
+    // Optimization: Memoize chart calculations
+    const { avgQuality, avgDeep, avgREM, avgTotal, chartData, hasPhaseData } = useMemo(() => {
+        const avgQuality = last14.reduce((acc, l) => acc + l.sleepQuality, 0) / (last14.length || 1);
+        const logsWithPhases = last14.filter(l => l.sleepPhases);
+        const hasPhaseData = logsWithPhases.length > 0;
+        
+        const avgDeep = (logsWithPhases.reduce((acc, l) => acc + (l.sleepPhases?.deep || 0), 0) / (logsWithPhases.length || 1)) / 60;
+        const avgREM = (logsWithPhases.reduce((acc, l) => acc + (l.sleepPhases?.rem || 0), 0) / (logsWithPhases.length || 1)) / 60;
+        const avgTotal = (logsWithPhases.reduce((acc, l) => {
+            const p = l.sleepPhases;
+            return acc + (p ? p.deep + p.light + p.rem : 0);
+        }, 0) / (logsWithPhases.length || 1)) / 60;
 
-    const chartData = last14.map((l, index) => {
-        const p = l.sleepPhases;
-        return {
-            index,
-            date: new Date(l.date).toLocaleDateString(undefined, { weekday: 'short' }),
-            quality: l.sleepQuality,
-            deep: p ? p.deep / 60 : 0,
-            light: p ? p.light / 60 : 0,
-            rem: p ? p.rem / 60 : 0,
-            awake: p ? p.awake / 60 : 0,
-            total: p ? (p.deep + p.light + p.rem) / 60 : 0
-        };
-    });
+        const chartData = last14.map((l, index) => {
+            const p = l.sleepPhases;
+            return {
+                index,
+                date: new Date(l.date).toLocaleDateString(undefined, { weekday: 'short' }),
+                quality: l.sleepQuality,
+                deep: p ? p.deep / 60 : 0,
+                light: p ? p.light / 60 : 0,
+                rem: p ? p.rem / 60 : 0,
+                awake: p ? p.awake / 60 : 0,
+                total: p ? (p.deep + p.light + p.rem) / 60 : 0
+            };
+        });
+
+        return { avgQuality, avgDeep, avgREM, avgTotal, chartData, hasPhaseData };
+    }, [last14]);
 
     const container: Variants = {
         hidden: { opacity: 0 },
@@ -146,7 +185,14 @@ export const SleepAnalysis: React.FC<Props> = ({ user }) => {
              <div className="flex justify-between items-end">
                 <motion.div variants={item} layout>
                     <h1 className="text-3xl font-light text-slate-900 dark:text-white tracking-tight">Sleep & Recovery</h1>
-                    <p className="text-slate-500 dark:text-slate-400 mt-1">Deep dive into your circadian rhythms.</p>
+                    <div className="flex items-center gap-2 mt-1">
+                        <p className="text-slate-500 dark:text-slate-400">Deep dive into your circadian rhythms.</p>
+                        {isSimulated && (
+                            <span className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-md flex items-center gap-1 border border-indigo-200 dark:border-indigo-800">
+                                <Info size={10} /> Demo Data
+                            </span>
+                        )}
+                    </div>
                 </motion.div>
             </div>
 
@@ -196,7 +242,7 @@ export const SleepAnalysis: React.FC<Props> = ({ user }) => {
                                 <Legend wrapperStyle={{paddingTop: '20px'}} iconType="circle" />
                                 
                                 <Bar 
-                                    isAnimationActive={false}
+                                    isAnimationActive={true}
                                     dataKey="deep" 
                                     name="Deep" 
                                     stackId="a" 
@@ -204,7 +250,7 @@ export const SleepAnalysis: React.FC<Props> = ({ user }) => {
                                     shape={<AnimatedBar radius={[0, 0, 4, 4]} />} 
                                 />
                                 <Bar 
-                                    isAnimationActive={false} 
+                                    isAnimationActive={true} 
                                     dataKey="rem" 
                                     name="REM" 
                                     stackId="a" 
@@ -212,7 +258,7 @@ export const SleepAnalysis: React.FC<Props> = ({ user }) => {
                                     shape={<AnimatedBar />} 
                                 />
                                 <Bar 
-                                    isAnimationActive={false} 
+                                    isAnimationActive={true} 
                                     dataKey="light" 
                                     name="Light" 
                                     stackId="a" 
@@ -357,8 +403,8 @@ const MetricBox = ({ icon, label, value, subtext, color }: any) => {
     };
 
     return (
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 h-full shadow-sm hover:shadow-xl transition-all duration-300">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${colors[color]}`}>
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 h-full shadow-sm hover:shadow-xl transition-all duration-300 group">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${colors[color]} group-hover:scale-110 transition-transform`}>
                 {icon}
             </div>
             <div className="text-3xl font-black text-slate-800 dark:text-white mb-1 tracking-tighter">{value}</div>
